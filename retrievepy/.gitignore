@@ -1,6 +1,8 @@
 latis.cfg
 .idea/
 
+.DS_Store
+.idea
 
 # BELOW WAS GRABBED FROM https://github.com/github/gitignore/blob/master/Python.gitignore
 
