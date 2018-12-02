@@ -1,18 +1,21 @@
 import requests
+from retrievepy.pylogger import get_logger
 import json
 import datetime as dt
 import numpy as np
-import pylogger
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import configparser
+import os
+from pprint import pprint
 
-LOGGER = pylogger.get_logger()
+LOGGER = get_logger()
 
 
 class RetrieveEng:
     def __init__(self):
         """ PRIVATE """
+        self.__directory = os.path.dirname(__file__)
         self.__catalog_url = ''
         self.__latis_base_url = ''
         self.__latis_url = None
@@ -29,7 +32,7 @@ class RetrieveEng:
         self.__time = None
         self.__epoch = dt.datetime(1970, 1, 1)
         self.__config = None
-        self.__config_file = 'latis.cfg'  # file containing latis api urls
+        self.__config_file = os.path.join(self.__directory, 'latis.cfg')
 
         """ PUBLIC """
         self.mnemonic = None
@@ -76,7 +79,7 @@ class RetrieveEng:
         self.__access_url = None
         self.__access_url_raw = None
 
-        catalogs = self.__catalog['SORCE_Catalog']['catalog']
+        catalogs = self.__catalog['AIM_Catalog']['catalog']
         for catalog in catalogs:
             for entry in catalog['dataset']:
                 if self.__latis_mnemonic == entry['name']:
@@ -149,7 +152,7 @@ class RetrieveEng:
 
         return True
 
-    def __build_url(self):
+    def __build_url(self, stride=1, binave=True):
         success = self.__set_times_url()
 
         if not success:
@@ -173,6 +176,11 @@ class RetrieveEng:
         if self.exclude_missing:
             self.__latis_url += '&exclude_missing()'
 
+        if binave:
+            self.__latis_url += '&binave(50000)'
+
+        self.__latis_url += '&stride('+str(stride)+')'
+
     def __convert_to_eu(self):
         coeffs = self.info[self.__latis_mnemonic]['analog_conversions']['coefficients']
 
@@ -190,8 +198,13 @@ class RetrieveEng:
     def __get_data(self):
         in_data = requests.get(self.__latis_url)
         response_dict = json.loads(in_data.text)
-        self.info = response_dict[self.__latis_mnemonic]['metadata']
-        as_np = np.asarray(response_dict[self.__latis_mnemonic]['data'])
+        try:
+            self.info = response_dict[self.__latis_mnemonic]['metadata']
+            as_np = np.asarray(response_dict[self.__latis_mnemonic]['data'])
+        except KeyError:
+            self.__latis_mnemonic = self.__latis_mnemonic.split('.')[-1]
+            self.info = response_dict[self.__latis_mnemonic]['metadata']
+            as_np = np.asarray(response_dict[self.__latis_mnemonic]['data'])
         self.__data = as_np[:, 1]
         self.__time = as_np[:, 0]
         self.__convert_to_eu()
@@ -202,7 +215,7 @@ class RetrieveEng:
     PUBLIC METHODS
     """
 
-    def fetch(self, mnemonic, start_time, stop_time, raw=False):
+    def fetch(self, mnemonic, start_time, stop_time, raw=False, stride=1, binave=False):
         self.mnemonic = mnemonic
         success = self.__reformat_input(mnemonic)
 
@@ -210,7 +223,7 @@ class RetrieveEng:
             self.__set_start_end_dt(start_time, stop_time)
 
         if success:
-            success = self.__build_url()
+            success = self.__build_url(stride=stride, binave=binave)
 
         success = self.__get_data()
 
@@ -251,4 +264,3 @@ if __name__ == "__main__":
     # test.__get_access_url('aac.mtbcmdyenable')
     test.fetch('xb slrarcur',[2018,300], [2018,301])
     test.plot()
-    print(test.data)
